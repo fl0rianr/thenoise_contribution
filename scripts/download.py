@@ -25,6 +25,11 @@ Models:
                   https://huggingface.co/Comfy-Org/Mage-Flow
   esrgan          Real-ESRGAN x4 pixel upscaler (optional, for upscaling)
                   https://huggingface.co/Comfy-Org/Real-ESRGAN_repackaged
+  controlmaps      Control-map checkpoints: a Depth-Anything-V2 depth model, or the
+                  ViTPose keypoint model + RT-DETR person detector pose needs.
+                  Default: both kinds' defaults, so depth and pose both work
+                  https://huggingface.co/depth-anything/Depth-Anything-V2-Small-hf
+                  https://huggingface.co/usyd-community/vitpose-base-simple
 
 Tokenizer/processor configs are vendored inside the ``thenoise`` package, so no
 tokenizer is ever downloaded; loading is fully offline.
@@ -48,6 +53,8 @@ Usage:
     python scripts/download.py --model mage-flow --variant base
     python scripts/download.py --model mage-flow --int8-convrot --edit-only
     python scripts/download.py --model esrgan
+    python scripts/download.py --model controlmaps
+    python scripts/download.py --model controlmaps --variant pose
     python scripts/download.py --model krea2 --dry-run
 """
 from __future__ import annotations
@@ -281,6 +288,61 @@ def _esrgan_jobs(args: argparse.Namespace) -> list[Artifact]:
     ]
 
 
+#: Depth-Anything-V2: (variant) -> huggingface repo, with the files a control-map dir
+#: needs (config + weights + processor config).
+_DEPTH_REPOS = {
+    "small": "depth-anything/Depth-Anything-V2-Small-hf",
+    "base": "depth-anything/Depth-Anything-V2-Base-hf",
+    "large": "depth-anything/Depth-Anything-V2-Large-hf",
+}
+#: Pose is two checkpoints: ViTPose measures the joints of one person crop at a time,
+#: so RT-DETR has to say where the people are first. ``pose`` is the default pair,
+#: ``pose-r50vd`` the more accurate detector for crowded or occluded scenes.
+_POSE_ESTIMATOR = "usyd-community/vitpose-base-simple"
+_POSE_DETECTORS = {
+    "pose": ("rtdetr_r18vd", "PekingU/rtdetr_r18vd_coco_o365"),
+    "pose-r50vd": ("rtdetr_r50vd", "PekingU/rtdetr_r50vd_coco_o365"),
+}
+#: What a transformers checkpoint directory needs to be loadable.
+_CHECKPOINT_FILES = ("config.json", "model.safetensors", "preprocessor_config.json")
+#: The variant that fetches what every control-map kind can run with: the smallest depth
+#: model plus both pose checkpoints. Depth and pose are separate downloads otherwise,
+#: and a pool with only one of them silently offers only half of what the engine has.
+_ALL = "all"
+
+
+def _checkpoint(repo: str, directory: str) -> list[Artifact]:
+    """One checkpoint's files, from ``repo`` into ``directory``.
+
+    A control-map pool holds one directory per checkpoint, so the label carries it:
+    a label with a slash lands in that subdirectory of the output directory."""
+    return [(f"{directory}/{name}", repo, name) for name in _CHECKPOINT_FILES]
+
+
+def _depth_jobs(variant: str) -> list[Artifact]:
+    """One Depth-Anything-V2 checkpoint, as ``variant`` names it."""
+    return _checkpoint(_DEPTH_REPOS[variant], f"depth_anything_v2_{variant}")
+
+
+def _pose_jobs(variant: str) -> list[Artifact]:
+    """Both checkpoints a pose map needs: the ViTPose estimator and ``variant``'s
+    RT-DETR person detector to crop with."""
+    detector_dir, detector_repo = _POSE_DETECTORS[variant]
+    return _checkpoint(_POSE_ESTIMATOR, "vitpose_base_simple") + _checkpoint(
+        detector_repo, detector_dir
+    )
+
+
+def _controlmaps_jobs(args: argparse.Namespace) -> list[Artifact]:
+    """Control-map checkpoints: a depth model, the two checkpoints a pose map needs,
+    or the default of each."""
+    if args.variant == _ALL:
+        return _depth_jobs("small") + _pose_jobs("pose")
+    if args.variant in _POSE_DETECTORS:
+        return _pose_jobs(args.variant)
+    return _depth_jobs(args.variant)
+
+
 @dataclass(frozen=True)
 class ModelSpec:
     key: str
@@ -355,6 +417,15 @@ MODELS: dict[str, ModelSpec] = {
         _esrgan_jobs,
         has_int8=False,
     ),
+    "controlmaps": ModelSpec(
+        "controlmaps", "./models/controlmaps",
+        "Control-map checkpoints: Depth-Anything-V2 depth, ViTPose + RT-DETR pose",
+        _controlmaps_jobs,
+        has_int8=False,
+        variant_supported=True,
+        variant_choices=(_ALL, "small", "base", "large", "pose", "pose-r50vd"),
+        default_variant=_ALL,
+    ),
 }
 
 
@@ -379,6 +450,9 @@ def _epilog() -> str:
         "  python scripts/download.py --model mage-flow --variant base",
         "  python scripts/download.py --model mage-flow --int8-convrot --edit-only",
         "  python scripts/download.py --model esrgan",
+        "  python scripts/download.py --model controlmaps            # depth + pose",
+        "  python scripts/download.py --model controlmaps --variant base",
+        "  python scripts/download.py --model controlmaps --variant pose",
     ]
     return "\n".join(lines)
 
@@ -408,7 +482,9 @@ def main() -> None:
             "aesthetic-v1.1) | zimage: turbo | base (default: turbo) | "
             "klein: 4b | 4b-base | 9b | 9b-base (default: 4b) | "
             "qwen-image-2.1: turbo | base (default: turbo) | "
-            "mage-flow: turbo | rl | base (default: turbo)"
+            "mage-flow: turbo | rl | base (default: turbo) | "
+            "controlmaps: all | small | base | large | pose | pose-r50vd "
+            "(default: all, the depth model and both pose checkpoints)"
         ),
     )
     ap.add_argument(
@@ -458,7 +534,7 @@ def main() -> None:
     if args.dry_run:
         print(f"plan for --model {args.model} -> {out_dir}")
         for name, repo, path in jobs:
-            print(f"  {name:14s} {repo} :: {path}")
+            print(f"  {name:34s} {repo} :: {path}")
         return
 
     out = Path(out_dir)
@@ -466,8 +542,13 @@ def main() -> None:
 
     print(f"Downloading {args.model} artifacts -> {out}")
     for name, repo, path in jobs:
-        dest = hf_hub_download(repo, path, local_dir=str(out))
-        print(f"  {name:14s} -> {dest}")
+        # A label naming a directory lands there: a control-map pool keeps one
+        # directory per checkpoint, and --out points at the pool.
+        directory, _, _ = name.rpartition("/")
+        destination = out / directory if directory else out
+        destination.mkdir(parents=True, exist_ok=True)
+        dest = hf_hub_download(repo, path, local_dir=str(destination))
+        print(f"  {name:34s} {repo} :: {path} -> {dest}")
     print(f"done: {args.model} ({len(jobs)} artifact(s))")
 
 

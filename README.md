@@ -23,6 +23,11 @@ TheNoise can be used standalone, from the command line or through a webui or thr
   <img width="2048" height="1066" alt="thenoise-upscaler" src="https://github.com/user-attachments/assets/f7ce89b7-fd25-4ad9-a3e4-d5e367530ab7" />
 </details>
 
+<details id="shot-controlmap">
+  <summary>Control Maps</summary>
+  <img width="2048" height="1066" alt="thenoise-control-maps" src="https://github.com/user-attachments/assets/c5ce6c59-f975-498a-a1e5-f9af2259a63d" />
+</details>
+
 ---
 ## Features
 
@@ -33,6 +38,7 @@ TheNoise ships:
 - a built-in 2× refiner-based (SesquiLSR) upscaler - fast and high-quality upscaling without loading extra model files,
 - pixel-space upscalers (Real-ESRGAN) up to 4× - standard ESRGAN-based models,
 - film grain and RCAS sharpening as post-processing,
+- control-map extraction for conditioning workflows - canny edges, line-art and soft-edge maps, depth maps and openpose-style pose skeletons,
 - LoRA support - one or more LoRAs per image, each with its own weight.
 
 ## Supported models
@@ -132,9 +138,10 @@ uv pip install -e ".[scripts]"
 
 | If you want to… | Use |
 |---|---|
-| generate an image from the command line | the [CLI](docs/cli.md) - `generate`, `edit`, `upscale` |
+| generate an image from the command line | the [CLI](docs/cli.md) - `generate`, `edit`, `upscale`, `controlmap` |
 | work through a browser | the web UI at `http://localhost:8000/` when running `serve` |
-| call it from other software | the [HTTP API](docs/api.md) - `/text2image`, `/edit`, `/upscale` |
+| call it from other software | the [HTTP API](docs/api.md) - `/text2image`, `/edit`, `/upscale`, `/controlmap` |
+| extract a control map from an image | `controlmap` - the [CLI](docs/cli.md#control-map-a-control-map), the `/controlmap` endpoint or the web UI's Control Maps tab |
 
 ## Documentation
 

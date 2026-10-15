@@ -17,6 +17,7 @@ thenoise/                  the package
   vae/                     VAE loaders (Qwen-Image, Flux, Flux.2, Wan 2.2, Mage)
   samplers/                denoising solvers (euler, er_sde)
   upscale/                 latent + pixel upscalers
+  controlmap/              control-map extractors (canny, lineart, softedge, depth, pose)
   postprocess/             grain, sharpening, Qwen-VAE enhance
   ui/                      web UI served by `serve`
   api.py / cli.py          HTTP API and CLI entry points
@@ -155,6 +156,17 @@ touches:
    usage instructions
 5. **`tests/`** — detection/loading tests that run without real weights
 6. **`pyproject.toml`** — the new `thenoise.dit.<name>` package (if any)
+
+### Adding a control-map kind
+
+A kind is an extractor in `thenoise/controlmap/` plus its options in
+`thenoise/controlmap/options.py`. An options dataclass field declares its default,
+bound and the words shown for it, and everything downstream is generated from that:
+the `--<kind>-<option>` CLI flags, the `/controlmap` request fields (the request
+carries the dataclass itself, so the bounds checked are the bounds used), and the
+option fields the web UI builds from `GET /controlmaps`. Ranges and choices are
+validated from the same declaration, so a kind's own `__post_init__` holds only what
+relates two of its fields - and nothing needs a second copy of a default.
 
 General rules:
 
