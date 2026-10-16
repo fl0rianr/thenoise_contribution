@@ -43,6 +43,7 @@ Usage:
     python scripts/download.py --model zimage --variant base
     python scripts/download.py --model klein --variant 9b
     python scripts/download.py --model klein --variant 4b --int8-convrot
+    python scripts/download.py --model klein --small-decoder
     python scripts/download.py --model ming-image
     python scripts/download.py --model ming-image --int8-convrot
     python scripts/download.py --model qwen-image --edit-only
@@ -151,6 +152,10 @@ _KLEIN_TEXT_ENCODERS = {
 #: Shared Flux.2 VAE (both sizes use the same file).
 _KLEIN_VAE = ("Comfy-Org/vae-text-encorder-for-flux-klein-4b",
               "split_files/vae/flux2-vae.safetensors")
+#: BFL's distilled small decoder, in a file that carries the (unchanged) encoder and
+#: the latent stats too: a drop-in --vae, ~1.4x faster decoding for the same latents.
+_SMALL_DECODER_VAE = ("black-forest-labs/FLUX.2-small-decoder",
+                      "full_encoder_small_decoder.safetensors")
 
 
 def _klein_jobs(args: argparse.Namespace) -> list[Artifact]:
@@ -166,11 +171,14 @@ def _klein_jobs(args: argparse.Namespace) -> list[Artifact]:
         dit_repo, dit_path = _KLEIN_DITS[args.variant]
     size = "4b" if args.variant.startswith("4b") else "9b"
     te_repo, te_path = _KLEIN_TEXT_ENCODERS[size]
-    return [
+    jobs = [
         ("dit", dit_repo, dit_path),
         ("vae", *_KLEIN_VAE),
         ("text_encoder", te_repo, te_path),
     ]
+    if args.small_decoder:
+        jobs.append(("vae (small decoder)", *_SMALL_DECODER_VAE))
+    return jobs
 
 
 def _ming_image_jobs(args: argparse.Namespace) -> list[Artifact]:
@@ -442,6 +450,7 @@ def _epilog() -> str:
         "  python scripts/download.py --model krea2 --int8-convrot",
         "  python scripts/download.py --model zimage --variant base",
         "  python scripts/download.py --model klein --variant 9b",
+        "  python scripts/download.py --model klein --small-decoder",
         "  python scripts/download.py --model ming-image",
         "  python scripts/download.py --model ming-image --int8-convrot",
         "  python scripts/download.py --model qwen-image --edit-only",
@@ -492,6 +501,13 @@ def main() -> None:
         help="krea2: also download the RAW (non-turbo) DiT",
     )
     ap.add_argument(
+        "--small-decoder", action="store_true",
+        help=(
+            "klein: also download BFL's small-decoder Flux.2 VAE, a drop-in --vae that "
+            "decodes ~1.4x faster and needs less room at decode time"
+        ),
+    )
+    ap.add_argument(
         "--image-only", action="store_true",
         help="qwen-image / mage-flow: only the t2i DiT (shared TE + VAE are still fetched)",
     )
@@ -520,6 +536,8 @@ def main() -> None:
             )
     if args.include_raw and args.model != "krea2":
         ap.error("--include-raw is only supported by --model krea2")
+    if args.small_decoder and args.model != "klein":
+        ap.error("--small-decoder is only supported by --model klein")
     if (args.image_only or args.edit_only) and args.model not in ("qwen-image", "mage-flow"):
         ap.error("--image-only / --edit-only are only supported by --model mage-flow, qwen-image")
     if args.image_only and args.edit_only:
