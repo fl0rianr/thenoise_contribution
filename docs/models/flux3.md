@@ -61,7 +61,7 @@ Hugging Face and there is no mirror to fall back on, so there is nothing the
 script could fetch unattended. Grab three files yourself from https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy:
 
 | File | What
-|---|---|---|
+|---|---|
 | `flux3_image_klein_sd_int8_convrot.safetensors` | the DiT |
 | `flux2-vae.safetensors` | VAE |
 | `qwen3vl_4b_int8_convrot.safetensors` | text encoder |
