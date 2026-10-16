@@ -89,6 +89,7 @@ a warmup run.
 | Qwen-Image 2512 · BF16 · 4 steps | 9.7s | 34.9s |
 | Qwen-Image 2.1 Turbo · INT8-ConvRot · 8 steps | 17.8s | 65s |
 | Ming-Image 0.1 · INT8-ConvRot · 12 steps | 21s | 84.8s |
+| Flux 3 Klein · INT8-ConvRot · 15 steps | 13.4s | 75.8s |
 
 *Image + simple instruction to edited image (editing):*
 
@@ -98,6 +99,7 @@ a warmup run.
 | Qwen-Image-Edit 2511 · BF16 · 4 steps | 21.7s | 14.2s |
 | Qwen-Image 2.1 Turbo · INT8-ConvRot · 8 steps | — | 21.3s |
 | Mage-Flow Turbo · BF16 · 4 steps | 4.9s | — *(no KV cache)* |
+| Flux 3 Klein · INT8-Convrot · 15 steps | 41.8s | — *(no KV cache)* |
 
 <small>TheNoise 0.9.0, Strix Halo (gfx1151, 128 GB unified)</small>
 
