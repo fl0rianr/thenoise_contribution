@@ -41,13 +41,18 @@ INT8-ConvRot, Distilled, 768x1024:
 
 *Generated — 15 steps:*
 
-<!-- image -->
+<img width="45%" alt="thenoise_746810373" src="https://github.com/user-attachments/assets/c3e5c156-e39d-46b0-9185-749c3e3d156e" />
+<img width="45%" alt="thenoise_3562505688" src="https://github.com/user-attachments/assets/dbd8e900-d81c-4a04-8a8d-edbcedb93d39" />
 
-*Edited — instruction: "…":*
 
-| Before | After |
-|---|---|
-| <!-- before --> | <!-- after --> |
+*Edited — 15 steps:*
+
+| Before | After | Prompt |
+|---|---|---|
+| <img width="100%" alt="thenoise_3562505688" src="https://github.com/user-attachments/assets/c09754e6-4c62-448e-97f0-fd02135e1d95" /> | <img width="100%" alt="thenoise_edit_3595287382" src="https://github.com/user-attachments/assets/4a1e7d48-b4b4-478b-8cae-63058c3f6af0" /> | Paint the sketch with colors |
+| <img width="100%" alt="thenoise_3562505688" src="https://github.com/user-attachments/assets/c09754e6-4c62-448e-97f0-fd02135e1d95" /> | <img width="100%" alt="thenoise_edit_3868697548" src="https://github.com/user-attachments/assets/1de31e7f-d92f-4f7c-9f1b-df004dd94d2d" /> | Make this photo realistic |
+ | <img width="100%" alt="thenoise_3562505688" src="https://github.com/user-attachments/assets/c09754e6-4c62-448e-97f0-fd02135e1d95" /> | <img width="1536" height="2048" alt="thenoise_edit_4248353269" src="https://github.com/user-attachments/assets/67e9f5c6-ef0e-4d85-8dad-13c56db86254" /> | Write in diagonal on top "Rome, 2026" in hand-writing font. Make image colorful. |
+ | <img height="500px" alt="canny (1)" src="https://github.com/user-attachments/assets/df15814c-c658-4cb0-988d-31b14646dbf4" /> |<img width="100%" alt="thenoise_edit_3125724563" src="https://github.com/user-attachments/assets/7a61753e-8e4c-439e-9b9f-d27cdcc36b62" /> | A watercolor sketch illustration of a small street in one of Mediterranean cities. Use image 1 for background. |
 
 ## Download
 
