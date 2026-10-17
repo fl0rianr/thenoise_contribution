@@ -48,13 +48,13 @@ TheNoise ships:
 | **Anima**, small and fast | ✓ | — | [anima](docs/models/anima.md) |
 | **Krea 2**, highest image quality | ✓ | — | [krea2](docs/models/krea2.md) |
 | **Qwen-Image 2.1**, generation and editing in one model | ✓ | ✓ | [qwen-image-2.1](docs/models/qwen-image-2.1.md) |
+| **MOSS-Image**, joint-stream DiT with a Qwen3.5 conditioner | ✓ | — | [moss-image](docs/models/moss-image.md) |
 | **Z-Image / Z-Image-Turbo**, quality at 8 steps | ✓ | — | [zimage](docs/models/zimage.md) |
 | **Flux.2 Klein 4B / 9B**, 4 steps, with editing | ✓ | ✓ | [flux2-klein](docs/models/flux2-klein.md) |
 | **Qwen-Image / Qwen-Image-Edit**, generation and editing | ✓ | ✓ | [qwen-image](docs/models/qwen-image.md) |
 | **Ming-Image 0.1**, RGBA output with real transparency | ✓ | — | [ming-image](docs/models/ming-image.md) |
 | **Mage-Flow / Turbo**, the fastest model, with editing | ✓ | ✓ | [mage-flow](docs/models/mage-flow.md) |
 | **Flux.3**, 15 steps with editing | ✓ | ✓ | [flux3](docs/models/flux3.md) |
-| **MOSS-Image**, joint-stream DiT with a Qwen3.5 conditioner | ✓ | — | [moss-image](docs/models/moss-image.md) |
 
 New models are added over time. PRs adding model support are welcome.
 
@@ -91,6 +91,7 @@ a warmup run.
 | Qwen-Image 2.1 Turbo · INT8-ConvRot · 8 steps | 17.8s | 65s |
 | Ming-Image 0.1 · INT8-ConvRot · 12 steps | 21s | 84.8s |
 | Flux 3 Klein · INT8-ConvRot · 15 steps | 13.4s | 75.8s |
+| MOSS-Image · INT8-ConvRot + [8 step DMD LoRA](https://huggingface.co/lodestones/MOSS-Image-SFT-8-steps-dmd) · 8 steps | 13.7s | 53.7s |
 
 *Image + simple instruction to edited image (editing):*
 
@@ -102,7 +103,7 @@ a warmup run.
 | Mage-Flow Turbo · BF16 · 4 steps | 4.9s | — *(no KV cache)* |
 | Flux 3 Klein · INT8-Convrot · 15 steps | 41.8s | — *(no KV cache)* |
 
-<small>TheNoise 0.9.0, Strix Halo (gfx1151, 128 GB unified)</small>
+<small>TheNoise 0.11.0, Strix Halo (gfx1151, 128 GB unified)</small>
 
 ## Quick start
 
