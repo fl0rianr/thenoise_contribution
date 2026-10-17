@@ -39,6 +39,8 @@ class MossImageModel(DiffusionModel):
 
     CAPABILITIES = {**DiffusionModel.CAPABILITIES, "edit": False, "kv_cache": False}
 
+    REFINE_DENOISE = 0.1
+
     # A LoRA trained on separate q/k/v projections is stacked onto the fused matrix
     # before matching, in that matrix's row order.
     lora_fusions = {"qkv": ("q", "k", "v")}
