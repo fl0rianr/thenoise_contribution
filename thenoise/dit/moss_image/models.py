@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Collection, Optional, Tuple
 
 import torch
 from torch import Tensor, nn
@@ -231,11 +231,16 @@ class MossImage(nn.Module):
         timestep: Tensor,
         txt_states: Tensor,
         pe: Tuple[Tensor, Tensor],
+        skip_blocks: Collection[int] = (),
     ) -> Tensor:
         """The velocity of the whole latent, ``[B, latent, H, W]``.
 
         ``pe`` is this branch's rotary table over the **joint** ``[image, text]``
         sequence and ``txt_states`` its own front-end output.
+
+        ``skip_blocks`` names joint blocks this branch does not run. Dropping one is
+        exactly a shorter residual chain: the blocks share the one ``mod`` row set, so
+        nothing is consumed by leaving one out and no later block changes.
         """
         batch, _, height, width = x.shape
         num_img = height * width
@@ -248,7 +253,9 @@ class MossImage(nn.Module):
 
         video = self.video_embedder(x.flatten(2).transpose(1, 2))
         tokens = torch.cat((video, txt_states), dim=1)
-        for block in self.layers:
+        for i, block in enumerate(self.layers):
+            if i in skip_blocks:
+                continue
             mark_token_axis(tokens, *pe)
             tokens = block(tokens, mod, pe)
 

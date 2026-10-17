@@ -109,10 +109,4 @@ resolution.
 **Sizes are rounded up to 16 px**, one DiT token per latent cell: 1024×1024 is
 64×64 tokens.
 
-**Upsizing uses the Flux.2 latent upscaler**, so `--upscale` works here as it does
-elsewhere.
 
-**Prompt length is load-bearing.** The image tokens are placed *after* the prompt on
-one of the rotary axes, so a padded prompt would shift the whole image; each
-conditioning branch is therefore run at its own length, and the conditional and
-unconditional branches keep separate position tables.

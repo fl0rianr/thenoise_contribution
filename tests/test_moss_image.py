@@ -271,6 +271,43 @@ def test_the_timestep_reaches_every_block_as_six_shared_rows(dit):
     assert [tuple(shape) for shape in block_in[0]] == [(1, 1, DIM)] * 6
 
 
+def test_a_skipped_joint_block_is_just_a_shorter_residual_chain(dit):
+    """Dropping a block changes the answer without shifting any other block's input.
+
+    The blocks share the one modulation row set, so leaving one out consumes no state:
+    the run must equal the same run with that block replaced by its own residual.
+    """
+    height, width, text = 3, 4, 5
+    _positions(dit, height * width, text)
+    with _compute():
+        txt = dit.text_states(_n(1, text, CTX), dit.pe_embedder["txt"])
+    latent, t, pe = _n(1, Z, height, width), torch.full((1,), 0.7), dit.pe_embedder["joint"]
+
+    ran, hooks = [], [
+        block.register_forward_pre_hook(lambda _m, _a, i=i: ran.append(i))
+        for i, block in enumerate(dit.layers)
+    ]
+    try:
+        with _compute():
+            skipped = dit(latent, t, txt, pe, [1])
+        assert ran == [0]  # block 1 was never entered
+
+        ran.clear()
+        real = dit.layers[1].forward
+        dit.layers[1].forward = lambda tokens, *rest: tokens  # == its own residual
+        with _compute():
+            stubbed = dit(latent, t, txt, pe)
+        dit.layers[1].forward = real
+    finally:
+        for hook in hooks:
+            hook.remove()
+
+    assert torch.equal(skipped, stubbed)
+    with _compute():
+        full = dit(latent, t, txt, pe)
+    assert not torch.equal(skipped, full)
+
+
 def test_situ_is_the_soft_capped_gated_activation():
     torch.manual_seed(0)
     hidden = torch.randn(3, 4, dtype=torch.float64)
@@ -409,6 +446,47 @@ def test_denoise_step_does_plain_cfg_over_the_two_branches(dit):
     with _compute():
         model.denoise_step(x, torch.tensor(0.7), cond, 1.0, 1)
     assert len(seen) == 1  # guidance off: one forward
+
+
+def test_the_negative_branch_runs_one_block_short(dit):
+    """Only the uncond forward is shortened; guidance off runs the full stack."""
+    # The recipe's own index is past the tiny stack, so the adapter is handed one.
+    assert MossImageModel.UNCOND_SKIP_BLOCKS == frozenset({22})
+    model = _bare(dit=dit, vae=FakeVAE(), UNCOND_SKIP_BLOCKS=frozenset({1}))
+    cond = Conditioning(cond=torch.randn(1, 7, CTX), null=torch.randn(1, 3, CTX))
+    x = model.prepare_latent(torch.randn(1, Z, 3, 2), cond, _params())
+
+    seen, real_forward = [], dit.forward
+
+    def spy(*args, **kwargs):
+        seen.append(args[4] if len(args) > 4 else kwargs.get("skip_blocks", ()))
+        return real_forward(*args, **kwargs)
+
+    dit.forward = spy
+    with _compute():
+        model.denoise_step(x, torch.tensor(0.7), cond, 3.0, 1)
+    assert [tuple(s) for s in seen] == [(), (1,)]  # the prompt keeps every block
+
+    seen.clear()
+    with _compute():
+        model.denoise_step(x, torch.tensor(0.7), cond, 1.0, 1)
+    assert [tuple(s) for s in seen] == [()]  # guidance off: nothing is skipped
+
+
+def test_guidance_off_is_the_path_the_skip_cannot_reach(dit):
+    """Bit-for-bit the same velocity with the skip in place: no uncond, no change."""
+    cond = Conditioning(cond=torch.randn(1, 5, CTX), null=torch.randn(1, 3, CTX))
+    latent = torch.randn(1, Z, 3, 2)
+    outs = []
+    # A block the tiny stack actually has, so a skip leaking into the cond branch
+    # would show up here rather than hiding past ``len(dit.layers)``.
+    for skip in (frozenset(), frozenset({1})):
+        model = _bare(dit=dit, vae=FakeVAE(), UNCOND_SKIP_BLOCKS=skip)
+        x = model.prepare_latent(latent, cond, _params())
+        with _compute():
+            outs.append(model.denoise_step(x, torch.tensor(0.7), cond, 1.0, 0))
+
+    assert torch.equal(outs[0], outs[1])
 
 
 def test_a_single_branch_model_needs_no_uncond_tables(dit):

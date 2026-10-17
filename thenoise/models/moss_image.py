@@ -45,6 +45,11 @@ class MossImageModel(DiffusionModel):
     # before matching, in that matrix's row order.
     lora_fusions = {"qkv": ("q", "k", "v")}
 
+    #: Joint blocks the **unconditional** branch does not run: the release recipe
+    #: drops one from the negative forward, which measurably sharpens the CFG
+    #: direction. Guidance <= 1 never runs that forward, so it is unaffected.
+    UNCOND_SKIP_BLOCKS = frozenset({22})
+
     #: Shared modulation plus fused up/gate FFN: together, on their own here.
     _FINGERPRINT = ("shared_block_modulation.", "layers.0.proj.ffn_up_gate.")
 
@@ -177,9 +182,15 @@ class MossImageModel(DiffusionModel):
         return v
 
     def _dit_forward(self, x: torch.Tensor, t_full: torch.Tensor, branch: str) -> torch.Tensor:
-        """One forward on one conditioning branch: its own text, its own positions."""
+        """One forward on one conditioning branch: its own text, positions, depth."""
         joint, _ = self._BRANCH_TABLES[branch]
-        return self.dit(x, t_full, self._txt_states[branch], self.dit.pe_embedder[joint])
+        return self.dit(
+            x,
+            t_full,
+            self._txt_states[branch],
+            self.dit.pe_embedder[joint],
+            self.UNCOND_SKIP_BLOCKS if branch == "uncond" else (),
+        )
 
     def resolve_size(self, width: int, height: int) -> tuple[int, int]:
         # One token per latent cell, so the VAE's own compression is the grid step.
