@@ -62,6 +62,186 @@ initToggle({
   apply: applySidebar, next: v => v === 'right' ? 'left' : 'right',
 });
 
+/* ---------- post-decode knobs (declared once server-side: thenoise/postprocess) ----------
+
+The sidebar's postprocess controls are built from ``GET /postprocess``, so a new knob
+appears in the form, the request body, the settings restore and the info panel without
+a line of UI code. Ids follow the panes' convention: ``<prefix><name>``, where the
+prefix is '' on Generate and 'edit_' on Edit.
+*/
+let postprocessOptions = [];
+
+function hintSpan(text) {
+  const span = document.createElement('span');
+  span.className = 'hint';
+  span.textContent = ' (' + text + ')';
+  return span;
+}
+
+function checkControl(prefix, option) {
+  const label = document.createElement('label');
+  label.className = 'check';
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.id = prefix + option.name;
+  input.checked = option.default === true;
+  input.addEventListener('change', refreshPostprocessNotes);
+  label.append(input, document.createTextNode(' ' + option.label));
+  if (option.hint) label.append(hintSpan(option.hint));
+  return label;
+}
+
+function rangeControl(prefix, option) {
+  const id = prefix + option.name;
+  const box = document.createElement('div');
+  box.className = 'range';
+
+  const head = document.createElement('div');
+  head.className = 'range-head';
+  const label = document.createElement('label');
+  label.className = 'label';
+  label.htmlFor = id;
+  label.textContent = option.label;
+  const val = document.createElement('span');
+  val.className = 'val';
+  val.id = id + '_val';
+  head.append(label, val);
+
+  const input = document.createElement('input');
+  input.type = 'range';
+  input.id = id;
+  // The knob's own range is what the server accepts; ui_min/ui_max is what is worth
+  // offering on a slider (film grain is accepted to 10 but sane to 1).
+  for (const [key, attr] of [['min', 'min'], ['max', 'max'], ['step', 'step']]) {
+    if (option['ui_' + key] !== undefined) input[attr] = option['ui_' + key];
+    else if (option[key] !== undefined) input[attr] = option[key];
+  }
+  input.value = option.default;
+  input.addEventListener('input', () => {
+    showRangeValue(prefix, option.name);
+    refreshPostprocessNotes();
+  });
+
+  box.append(head, input);
+  return box;
+}
+
+function buildPostprocessControls(prefix) {
+  const box = $(prefix + 'postprocess_controls');
+  if (!box) return;
+  box.innerHTML = '';
+  for (const option of postprocessOptions) {
+    box.append(option.type === 'boolean'
+      ? checkControl(prefix, option) : rangeControl(prefix, option));
+  }
+}
+
+// "Saturation 0.30 · Film grain 0.50" — what the collapsed section would otherwise hide.
+function postprocessNote(prefix) {
+  const active = [];
+  for (const option of postprocessOptions) {
+    const input = $(prefix + option.name);
+    if (!input) continue;
+    if (option.type === 'boolean') {
+      if (input.checked !== option.default) active.push(option.label);
+      continue;
+    }
+    const value = input.valueAsNumber;
+    if (Number.isFinite(value) && value !== option.default) {
+      active.push(option.label + ' ' + value.toFixed(2));
+    }
+  }
+  return active.join(' · ');
+}
+
+// Both panes carry the controls, so both headers are kept truthful.
+function refreshPostprocessNotes() {
+  for (const p of ['', 'edit_']) {
+    const note = $(p + 'postprocess_note');
+    if (note) note.textContent = postprocessNote(p);
+  }
+}
+
+function showRangeValue(prefix, name) {
+  const val = $(prefix + name + '_val');
+  if (val) val.textContent = parseFloat($(prefix + name).value).toFixed(2);
+}
+
+// The knobs as the request body wants them.
+function collectPostprocess(prefix) {
+  const body = {};
+  for (const option of postprocessOptions) {
+    const input = $(prefix + option.name);
+    if (!input) continue;
+    body[option.name] = option.type === 'boolean' ? input.checked : input.valueAsNumber;
+  }
+  return body;
+}
+
+function restorePostprocess(prefix, meta) {
+  for (const option of postprocessOptions) {
+    const input = $(prefix + option.name);
+    const value = meta[option.name];
+    if (!input || value == null) continue;
+    if (option.type === 'boolean') input.checked = !!value;
+    else {
+      input.value = value;
+      showRangeValue(prefix, option.name);
+    }
+  }
+  refreshPostprocessNotes();
+}
+
+// One row per knob the image was actually made with; a default is not worth showing.
+function postprocessInfoRows(meta) {
+  const rows = [];
+  for (const option of postprocessOptions) {
+    if (!(option.name in meta) || meta[option.name] === option.default) continue;
+    rows.push([option.label, meta[option.name], '']);
+  }
+  return rows;
+}
+
+async function loadPostprocess() {
+  const data = await fetchJSON('/postprocess');
+  postprocessOptions = (data && data.options) || [];
+  for (const p of ['', 'edit_']) {
+    buildPostprocessControls(p);
+  }
+  refreshPostprocessNotes();
+}
+
+/* ---------- collapsible sidebar sections ----------
+
+Sections sharing a ``data-pref`` open and close together, and remember it: both
+panes carry the same controls, and a user who opened one means the other too.
+*/
+function collapsibles(pref) {
+  return Array.from(document.querySelectorAll(`details.collapse[data-pref="${pref}"]`));
+}
+
+function initCollapses() {
+  const prefKeys = new Set(
+    Array.from(document.querySelectorAll('details.collapse[data-pref]'))
+      .map(box => box.dataset.pref)
+  );
+  for (const pref of prefKeys) {
+    const boxes = collapsibles(pref);
+    const open = localStorage.getItem(pref) === '1';
+    for (const box of boxes) {
+      box.open = open;
+      box.addEventListener('toggle', () => {
+        localStorage.setItem(pref, box.open ? '1' : '0');
+        for (const other of collapsibles(pref)) {
+          if (other !== box) other.open = box.open;
+        }
+      });
+    }
+  }
+}
+
+initCollapses();
+
 function bindRange(sliderId, valId, digits = 2) {
   $(sliderId).addEventListener('input', e =>
     $(valId).textContent = parseFloat(e.target.value).toFixed(digits));
@@ -142,8 +322,7 @@ const FIELD_LABELS = {
   width: 'Width', height: 'Height', steps: 'Steps',
   guidance_scale: 'CFG scale', seed: 'Seed', upscale: 'Upscale',
   upscale_factor: 'Upscale factor', upscale_type: 'Upscale type',
-  sampler: 'Sampler', qwen_vae_enhance: 'Reduce grid pattern',
-  film_grain: 'Film grain', sharpening: 'Sharpening', lora_specs: 'LoRA',
+  sampler: 'Sampler', lora_specs: 'LoRA',
 };
 
 function addRow(grid, label, value, cls) {
@@ -178,12 +357,8 @@ function renderInfo(meta) {
   if ('upscale_factor' in meta) rows.push(['Upscale factor', meta.upscale_factor, '']);
   if ('upscale_type' in meta) rows.push(['Upscale type', meta.upscale_type, '']);
   if ('pixel_upscaler' in meta && meta.pixel_upscaler) rows.push(['Pixel upscaler', meta.pixel_upscaler, '']);
-  if ('qwen_vae_enhance' in meta) rows.push(['Reduce grid pattern', meta.qwen_vae_enhance, '']);
-  for (const key of ['film_grain','sharpening','lora_specs']) {
-    if (key in meta && (key !== 'film_grain' || meta.film_grain) && (key !== 'sharpening' || meta.sharpening)) {
-      rows.push([FIELD_LABELS[key], meta[key], '']);
-    }
-  }
+  rows.push(...postprocessInfoRows(meta));
+  if ('lora_specs' in meta && meta.lora_specs) rows.push([FIELD_LABELS.lora_specs, meta.lora_specs, '']);
   renderInfoRows(rows);
 }
 
@@ -341,9 +516,7 @@ function collectSettings(prefix, extra) {
     upscale_factor: parseFloat($(prefix + 'upscale_factor').value),
     upscale_type: $(prefix + 'upscale_type').value,
     pixel_upscaler: $(prefix + 'pixel_upscaler').value || null,
-    qwen_vae_enhance: $(prefix + 'qwen_vae_enhance').checked,
-    film_grain: parseFloat($(prefix + 'film_grain').value),
-    sharpening: parseFloat($(prefix + 'sharpening').value),
+    ...collectPostprocess(prefix),
     lora_specs: parseLora($(prefix + 'lora_specs').value),
   };
   for (const f of ['width', 'height', 'steps', 'seed']) {

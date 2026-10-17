@@ -14,7 +14,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.responses import HTMLResponse, Response
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, create_model, model_validator
 
 from thenoise.controlmap.options import (
     OPTIONS_BY_KIND,
@@ -25,7 +25,13 @@ from thenoise.controlmap.options import (
     ControlMapOptions,
     SoftedgeOptions,
 )
+from thenoise.postprocess.options import (
+    POSTPROCESS_NAMES,
+    PostprocessOptions,
+    flat_options,
+)
 from thenoise.utils.image_tensor import load_image
+from thenoise.utils.options import options_schema, wire_fields
 from thenoise.utils.png import pnginfo_of
 
 logger = logging.getLogger(__name__)
@@ -40,7 +46,13 @@ def decode_image(encoded: str) -> "PIL.Image.Image":
     return load_image(io.BytesIO(base64.b64decode(encoded)))
 
 
-class Text2ImageRequest(BaseModel):
+class _Text2ImageBody(BaseModel):
+    """Everything a generation asks for, except the post-decode chain.
+
+    :data:`Text2ImageRequest` is this body plus the knobs of ``PostprocessOptions``,
+    which are appended to it as flat wire fields.
+    """
+
     prompt: str
     negative_prompt: str = ""
     width: Optional[int] = None
@@ -54,9 +66,6 @@ class Text2ImageRequest(BaseModel):
     upscale_factor: float = 1.0
     upscale_type: str = "refined"
     sampler: Optional[str] = None
-    qwen_vae_enhance: bool = False
-    film_grain: float = 0.0
-    sharpening: float = 0.0
     lora_specs: Optional[List[str]] = None  # ["filename.safetensors:0.8", ...]
     pixel_upscaler: Optional[str] = None  # name (no .safetensors) in upscaler_dir
     kv_cache: Optional[bool] = None  # reference-latent KV cache (edit only; null = auto)
@@ -80,14 +89,16 @@ class Text2ImageRequest(BaseModel):
             upscale_factor=self.upscale_factor,
             upscale_type=self.upscale_type,
             sampler=self.sampler,
-            qwen_vae_enhance=self.qwen_vae_enhance,
-            film_grain=self.film_grain,
-            sharpening=self.sharpening,
+            **flat_options(self),
             lora_specs=self.lora_specs,
             pixel_upscaler=self.pixel_upscaler,
             kv_cache=self.kv_cache,
             ref_method=self.ref_method,
         )
+
+Text2ImageRequest = create_model(
+    "Text2ImageRequest", __base__=_Text2ImageBody, **wire_fields(PostprocessOptions)
+)
 
 
 class UpscaleRequest(BaseModel):
@@ -151,10 +162,24 @@ class EditRequest(Text2ImageRequest):
         return req
 
 
+def _option_problem(error: dict) -> str:
+    """One rejected option as a sentence that names it.
+
+    A kind's options validate themselves and already say which field they mean; a
+    pydantic constraint message does not, and "Input should be less than or equal to
+    1" is no use to whoever sent the request.
+    """
+    message = error["msg"]
+    name = str(error["loc"][-1]) if error["loc"] else ""
+    if not name or name == "body" or message.startswith(name):
+        return message
+    return f"{name}: {message}"
+
+
 def _is_options_problem(error: dict) -> bool:
-    """Whether a validation error is about a kind's options rather than the body."""
+    """Whether a validation error is about a request's options rather than the body."""
     where = error["loc"][1:] if error["loc"][:1] == ("body",) else list(error["loc"])
-    return not where or where[0] in OPTIONS_BY_KIND
+    return not where or where[0] in OPTIONS_BY_KIND or where[0] in POSTPROCESS_NAMES
 
 
 def create_app(runtime) -> FastAPI:
@@ -187,7 +212,7 @@ def create_app(runtime) -> FastAPI:
         problems = [error for error in exc.errors() if _is_options_problem(error)]
         if not problems:
             return await request_validation_exception_handler(request, exc)
-        return Response(status_code=400, content="; ".join(e["msg"] for e in problems))
+        return Response(status_code=400, content="; ".join(_option_problem(e) for e in problems))
 
     @app.get("/", response_class=HTMLResponse)
     def ui():
@@ -241,6 +266,11 @@ def create_app(runtime) -> FastAPI:
                 logger.exception("failed to detect scale for upscaler %r", name)
                 scales[name] = 0
         return {"upscalers": names, "scales": scales}
+
+    @app.get("/postprocess")
+    def postprocess():
+        """The post-decode knobs, described for the web UI to build its controls from."""
+        return {"options": options_schema(PostprocessOptions)}
 
     @app.get("/controlmaps")
     def controlmaps():
