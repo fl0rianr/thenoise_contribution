@@ -50,9 +50,16 @@ recipes for this model - each pins the checkpoints and the generation defaults:
 
 ## Performance (Strix Halo)
 
-Not measured yet. Guidance 3.0 means two DiT passes per step, so this is one of the
-most expensive models in the catalog: drop `--guidance-scale` to 1 and the cost per
-step halves, and the step count is a straight trade after that.
+INT8-ConvRot, [8 step DMD LoRA](https://huggingface.co/lodestones/MOSS-Image-SFT-8-steps-dmd), 768x1024:
+
+- Generate @ 8 steps : **~10.1 s**
+
+## Examples
+
+*Generated:*
+
+<img width="45%" alt="thenoise_4115995311" src="https://github.com/user-attachments/assets/733672c2-9fc5-4924-92ba-8ee4b3a18c35" />
+<img width="45%" alt="thenoise_3119577629" src="https://github.com/user-attachments/assets/8db26707-2e1c-4508-81b4-d9b29da42cdc" />
 
 ## Download
 
