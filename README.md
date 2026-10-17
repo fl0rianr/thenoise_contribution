@@ -91,7 +91,7 @@ a warmup run.
 | Qwen-Image 2.1 Turbo · INT8-ConvRot · 8 steps | 17.8s | 65s |
 | Ming-Image 0.1 · INT8-ConvRot · 12 steps | 21s | 84.8s |
 | Flux 3 Klein · INT8-ConvRot · 15 steps | 13.4s | 75.8s |
-| MOSS-Image · INT8-ConvRot + [8 step DMD LoRA](https://huggingface.co/lodestones/MOSS-Image-SFT-8-steps-dmd) · 8 steps | 13.7s | 53.7s |
+| MOSS-Image · BF16 + [8 step DMD LoRA](https://huggingface.co/lodestones/MOSS-Image-SFT-8-steps-dmd) · 8 steps | 12.6s | 51.2s |
 
 *Image + simple instruction to edited image (editing):*
 
