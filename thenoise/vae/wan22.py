@@ -20,8 +20,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -87,13 +85,9 @@ def strip_apply(fn, x: torch.Tensor, scale: int = 1, halo: int = 1, out: torch.T
     return out
 
 
-def _fast_inference(module: nn.Module, setting: str, default: str) -> bool:
-    enabled = os.environ.get(setting)
-    if enabled is None:
-        enabled = getattr(module, default, False)
-    else:
-        enabled = enabled.lower() not in {"0", "off", "false"}
-    return bool(enabled) and not module.training and not torch.is_grad_enabled()
+def _fast_inference(module: nn.Module, flag: str) -> bool:
+    return (getattr(module, flag, False)
+            and not module.training and not torch.is_grad_enabled())
 
 
 class Wan22RMSNorm(nn.Module):
@@ -106,16 +100,14 @@ class Wan22RMSNorm(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         normalized = F.normalize(x, dim=1)
-        if _fast_inference(self, "THENOISE_VAE_INPLACE_ACTIVATIONS", "_inplace_default"):
+        if _fast_inference(self, "_inplace_default"):
             return normalized.mul_(self.scale).mul_(self.gamma)
         return normalized * self.scale * self.gamma
 
 
 class Wan22SafeSiLU(nn.SiLU):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return F.silu(x, inplace=_fast_inference(
-            self, "THENOISE_VAE_INPLACE_ACTIVATIONS", "_inplace_default"
-        ))
+        return F.silu(x, inplace=_fast_inference(self, "_inplace_default"))
 
 
 class Wan22ResidualBlock(nn.Module):
@@ -310,7 +302,7 @@ class Wan22UpBlock(nn.Module):
         for layer in self.upsamples:
             h = layer(h)
         if self.avg_shortcut is not None:
-            if _fast_inference(self, "THENOISE_VAE_DIRECT_SHORTCUT", "_direct_shortcut_default"):
+            if _fast_inference(self, "_direct_shortcut_default"):
                 h = self.avg_shortcut.add_to(x, h)
             else:
                 h = strip_apply(self.avg_shortcut, x, scale=self.avg_shortcut.factor_s, halo=0, out=h)
