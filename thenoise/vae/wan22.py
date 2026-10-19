@@ -85,12 +85,8 @@ def strip_apply(fn, x: torch.Tensor, scale: int = 1, halo: int = 1, out: torch.T
     return out
 
 
-def _fast_inference(module: nn.Module) -> bool:
-    return not module.training and not torch.is_grad_enabled()
-
-
 class Wan22RMSNorm(nn.Module):
-    """RMS norm over channels, keeping the original BF16 rounding order."""
+    """RMS norm over channels, preserving the scaling order of the reference."""
 
     def __init__(self, dim: int) -> None:
         super().__init__()
@@ -98,15 +94,7 @@ class Wan22RMSNorm(nn.Module):
         self.gamma = nn.Parameter(torch.ones(dim, 1, 1))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        normalized = F.normalize(x, dim=1)
-        if _fast_inference(self):
-            return normalized.mul_(self.scale).mul_(self.gamma)
-        return normalized * self.scale * self.gamma
-
-
-class Wan22SafeSiLU(nn.SiLU):
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return F.silu(x, inplace=_fast_inference(self))
+        return F.normalize(x, dim=1).mul_(self.scale * self.gamma)
 
 
 class Wan22ResidualBlock(nn.Module):
@@ -117,10 +105,10 @@ class Wan22ResidualBlock(nn.Module):
         super().__init__()
         self.residual = nn.Sequential(
             Wan22RMSNorm(in_dim),
-            Wan22SafeSiLU(),
+            nn.SiLU(inplace=True),
             nn.Conv2d(in_dim, out_dim, 3, padding=1),
             Wan22RMSNorm(out_dim),
-            Wan22SafeSiLU(),
+            nn.SiLU(inplace=True),
             nn.Dropout(0.0),
             nn.Conv2d(out_dim, out_dim, 3, padding=1),
         )
@@ -301,10 +289,7 @@ class Wan22UpBlock(nn.Module):
         for layer in self.upsamples:
             h = layer(h)
         if self.avg_shortcut is not None:
-            if _fast_inference(self):
-                h = self.avg_shortcut.add_to(x, h)
-            else:
-                h = strip_apply(self.avg_shortcut, x, scale=self.avg_shortcut.factor_s, halo=0, out=h)
+            h = self.avg_shortcut.add_to(x, h)
         return h
 
 
@@ -319,7 +304,7 @@ def _middle(dim: int) -> nn.Sequential:
 
 def _head(dim: int, out_dim: int) -> nn.Sequential:
     """RMS -> SiLU -> 3x3 conv."""
-    return nn.Sequential(Wan22RMSNorm(dim), Wan22SafeSiLU(), nn.Conv2d(dim, out_dim, 3, padding=1))
+    return nn.Sequential(Wan22RMSNorm(dim), nn.SiLU(inplace=True), nn.Conv2d(dim, out_dim, 3, padding=1))
 
 
 class Wan22Encoder(nn.Module):
