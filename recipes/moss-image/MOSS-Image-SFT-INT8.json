@@ -1,8 +1,8 @@
 {
   "checkpoints": {
-    "main": "Comfy-Org/MOSS-Image:diffusion_models/moss_image_sft_int8_convrot_attn.safetensors",
+    "main": "Comfy-Org/MOSS-Image:diffusion_models/moss_image_sft_int8_convrot.safetensors",
     "text_encoder": "Comfy-Org/MOSS-Image:text_encoders/qwen3.5_9b_int8_convrot.safetensors",
-    "vae": "Comfy-Org/MOSS-Image:vae/flux2-vae.safetensors"
+    "vae": "Comfy-Org/MOSS-Image:vae/flux2-vae_small.safetensors"
   },
   "image_defaults": {
     "cfg_scale": 3,
