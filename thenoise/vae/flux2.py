@@ -48,7 +48,7 @@ _DECODER_VARIANTS = {FULL_DECODER_CH: "full", SMALL_DECODER_CH: "small"}
 
 
 def swish(x: torch.Tensor) -> torch.Tensor:
-    return x * torch.sigmoid(x)
+    return F.silu(x)
 
 
 def _patchify(z: torch.Tensor) -> torch.Tensor:
