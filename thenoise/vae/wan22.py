@@ -85,9 +85,8 @@ def strip_apply(fn, x: torch.Tensor, scale: int = 1, halo: int = 1, out: torch.T
     return out
 
 
-def _fast_inference(module: nn.Module, flag: str) -> bool:
-    return (getattr(module, flag, False)
-            and not module.training and not torch.is_grad_enabled())
+def _fast_inference(module: nn.Module) -> bool:
+    return not module.training and not torch.is_grad_enabled()
 
 
 class Wan22RMSNorm(nn.Module):
@@ -100,14 +99,14 @@ class Wan22RMSNorm(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         normalized = F.normalize(x, dim=1)
-        if _fast_inference(self, "_inplace_default"):
+        if _fast_inference(self):
             return normalized.mul_(self.scale).mul_(self.gamma)
         return normalized * self.scale * self.gamma
 
 
 class Wan22SafeSiLU(nn.SiLU):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return F.silu(x, inplace=_fast_inference(self, "_inplace_default"))
+        return F.silu(x, inplace=_fast_inference(self))
 
 
 class Wan22ResidualBlock(nn.Module):
@@ -302,7 +301,7 @@ class Wan22UpBlock(nn.Module):
         for layer in self.upsamples:
             h = layer(h)
         if self.avg_shortcut is not None:
-            if _fast_inference(self, "_direct_shortcut_default"):
+            if _fast_inference(self):
                 h = self.avg_shortcut.add_to(x, h)
             else:
                 h = strip_apply(self.avg_shortcut, x, scale=self.avg_shortcut.factor_s, halo=0, out=h)
@@ -521,14 +520,6 @@ class AutoencoderKLWan22(nn.Module):
             dec_dim, z_dim, dim_mult, num_res_blocks,
             image_channels * patch_size * patch_size, temperal_downsample[::-1],
         )
-        self._qwen21_safe_defaults = (z_dim == 64 and image_channels == 4
-                                      and patch_size == 1 and len(dim_mult) == 5)
-        if self._qwen21_safe_defaults:
-            for module in self.modules():
-                if isinstance(module, (Wan22RMSNorm, Wan22SafeSiLU)):
-                    module._inplace_default = True
-                elif isinstance(module, Wan22UpBlock):
-                    module._direct_shortcut_default = True
 
     @property
     def dtype(self) -> torch.dtype:
