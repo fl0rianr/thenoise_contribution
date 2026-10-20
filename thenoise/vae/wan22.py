@@ -86,7 +86,7 @@ def strip_apply(fn, x: torch.Tensor, scale: int = 1, halo: int = 1, out: torch.T
 
 
 class Wan22RMSNorm(nn.Module):
-    """RMS norm over the channel dim: ``x * rsqrt(mean(x^2)) * sqrt(C) * gamma``."""
+    """RMS norm over channels, preserving the scaling order of the reference."""
 
     def __init__(self, dim: int) -> None:
         super().__init__()
@@ -94,7 +94,7 @@ class Wan22RMSNorm(nn.Module):
         self.gamma = nn.Parameter(torch.ones(dim, 1, 1))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return F.normalize(x, dim=1) * (self.scale * self.gamma)
+        return F.normalize(x, dim=1).mul_(self.scale * self.gamma)
 
 
 class Wan22ResidualBlock(nn.Module):
@@ -105,10 +105,10 @@ class Wan22ResidualBlock(nn.Module):
         super().__init__()
         self.residual = nn.Sequential(
             Wan22RMSNorm(in_dim),
-            nn.SiLU(),
+            nn.SiLU(inplace=True),
             nn.Conv2d(in_dim, out_dim, 3, padding=1),
             Wan22RMSNorm(out_dim),
-            nn.SiLU(),
+            nn.SiLU(inplace=True),
             nn.Dropout(0.0),
             nn.Conv2d(out_dim, out_dim, 3, padding=1),
         )
@@ -208,6 +208,34 @@ class Wan22DupUp(nn.Module):
         x = x.permute(0, 1, 4, 2, 5, 3)
         return x.reshape(b, self.out_channels, h * fs, w * fs)
 
+    def add_to(self, x: torch.Tensor, out: torch.Tensor) -> torch.Tensor:
+        """Add DupUp directly into the output, without a duplicated tensor."""
+        fs = self.factor_s
+        b, in_channels, h, w = x.shape
+        expected = (b, self.out_channels, h * fs, w * fs)
+        if tuple(out.shape) != expected:
+            raise ValueError(f"DupUp target must have shape {expected}, got {tuple(out.shape)}")
+        if in_channels % self.out_channels:
+            return out.add_(self(x))
+        stride = in_channels // self.out_channels
+        if stride * self.repeats != self.factor_t * fs * fs:
+            return out.add_(self(x))
+
+        offsets = [((self.factor_t - 1) * fs * fs + r * fs + c) // self.repeats
+                   for r in range(fs) for c in range(fs)]
+        dest = out.view(b, self.out_channels, h, fs, w, fs)
+        if all(offset == offsets[0] for offset in offsets):
+            dest.add_(x[:, offsets[0]::stride].unsqueeze(3).unsqueeze(5))
+        else:
+            for r in range(fs):
+                row = offsets[r * fs:(r + 1) * fs]
+                if all(offset == row[0] for offset in row):
+                    dest[:, :, :, r, :, :].add_(x[:, row[0]::stride].unsqueeze(-1))
+                else:
+                    for c, offset in enumerate(row):
+                        dest[:, :, :, r, :, c].add_(x[:, offset::stride])
+        return out
+
 
 class Wan22DownBlock(nn.Module):
     """v2_2 ``Down_ResidualBlock``: residual stack + resample + the parameter-free
@@ -261,8 +289,7 @@ class Wan22UpBlock(nn.Module):
         for layer in self.upsamples:
             h = layer(h)
         if self.avg_shortcut is not None:
-            # add the shortcut into the block's own buffer, not a second full-size one
-            h = strip_apply(self.avg_shortcut, x, scale=self.avg_shortcut.factor_s, halo=0, out=h)
+            h = self.avg_shortcut.add_to(x, h)
         return h
 
 
@@ -277,7 +304,7 @@ def _middle(dim: int) -> nn.Sequential:
 
 def _head(dim: int, out_dim: int) -> nn.Sequential:
     """RMS -> SiLU -> 3x3 conv."""
-    return nn.Sequential(Wan22RMSNorm(dim), nn.SiLU(), nn.Conv2d(dim, out_dim, 3, padding=1))
+    return nn.Sequential(Wan22RMSNorm(dim), nn.SiLU(inplace=True), nn.Conv2d(dim, out_dim, 3, padding=1))
 
 
 class Wan22Encoder(nn.Module):
