@@ -61,7 +61,26 @@ int8-convrot text encoder in every one:
 
 ## Performance (Strix Halo)
 
-Not measured yet.
+INT8-ConvRot, Edit Turbo, 768x1024:
+
+- Generate @ 4 steps : **~6.9 s**
+- Edit @ 4 steps: ~10.4 s
+
+## Examples
+
+*Generated:*
+
+<img width="45%" alt="thenoise_1579069706" src="https://github.com/user-attachments/assets/42f71e22-c26d-488a-9e67-910a741299ad" />
+<img width="45%" alt="thenoise_1579069706 (1)" src="https://github.com/user-attachments/assets/772f5d5f-0845-4e83-ae0f-b9b92dc551a7" />
+
+*Edited:*
+
+| Before | After | Prompt |
+|---|---|---|
+| <img width="100%" alt="thenoise_1579069706 (1)" src="https://github.com/user-attachments/assets/1b76ede4-546f-4dc5-a871-e5ebb78c9c98" /> | <img width="100%" alt="thenoise_edit_1781659069" src="https://github.com/user-attachments/assets/87b308b2-d3fb-4758-9c57-cdb42575d860" /> | Color image |
+| <img width="100%" alt="thenoise_1579069706 (1)" src="https://github.com/user-attachments/assets/1b76ede4-546f-4dc5-a871-e5ebb78c9c98" /> | <img width="100%" alt="thenoise_edit_3784560754" src="https://github.com/user-attachments/assets/977ffa79-9310-422b-bdb7-90b7d6c9cc0b" /> | Make image realistic |
+| <img width="100%" alt="thenoise_1579069706 (1)" src="https://github.com/user-attachments/assets/1b76ede4-546f-4dc5-a871-e5ebb78c9c98" /> | <img width="100%" alt="thenoise_edit_758350356" src="https://github.com/user-attachments/assets/7e017880-a540-4f5e-be97-bf25e6a9b3ff" /> | Write in diagonal on top "Rome, 2026" in hand-writing font. Make image colorful.|
+
 
 ## Download
 
