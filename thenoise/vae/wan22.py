@@ -27,6 +27,7 @@ from einops import rearrange
 
 from thenoise.utils.attention import single_head_attention
 from thenoise.utils.safetensors import load_safetensors
+from .fused import image_elems, strip_apply
 
 from thenoise.utils.setup_logging import setup_logging
 
@@ -48,41 +49,6 @@ def unpatchify(x: torch.Tensor, patch_size: int) -> torch.Tensor:
     if patch_size == 1:
         return x
     return rearrange(x, "b (c r q) h w -> b c (h q) (w r)", q=patch_size, r=patch_size)
-
-
-# Elements per strip of rows (16.7M -> a 32MB bf16 buffer). Stripping bounds
-# cuDNN's conv workspace: a single full-size conv activation at 4K costs GBs, and
-# the library picks its algorithm from the tensor it is handed.
-STRIP_ELEMS = 2**24
-
-
-def strip_apply(fn, x: torch.Tensor, scale: int = 1, halo: int = 1, out: torch.Tensor | None = None):
-    """Apply a spatial ``fn`` to ``x`` in horizontal strips of rows.
-
-    ``scale`` is the height multiplier of ``fn`` (2 for a 2x upsample), ``halo``
-    is the number of neighbouring rows fed in on each side — one per 3x3 conv in
-    ``fn``, so the kept rows are bit-identical to the unstripped call.
-
-    ``out`` is a preallocated result to ADD into.
-    """
-    n = -(-x.numel() * scale * scale // STRIP_ELEMS)
-    if n <= 1 and out is None:
-        return fn(x)
-    add = out is not None
-    size = x.shape[-2]
-    step = -(-size // n)
-    for a in range(0, size, step):
-        b = min(size, a + step)
-        lo = max(0, a - halo)
-        y = fn(x.narrow(-2, lo, min(size, b + halo) - lo)).narrow(-2, (a - lo) * scale, (b - a) * scale)
-        if out is None:
-            out = y.new_empty(*y.shape[:-2], size * scale, y.shape[-1])
-        dst = out.narrow(-2, a * scale, (b - a) * scale)
-        if add:
-            dst.add_(y)
-        else:
-            dst.copy_(y)
-    return out
 
 
 class Wan22RMSNorm(nn.Module):
@@ -114,9 +80,22 @@ class Wan22ResidualBlock(nn.Module):
         )
         self.shortcut = nn.Conv2d(in_dim, out_dim, 1) if in_dim != out_dim else nn.Identity()
 
+    @property
+    def updates_input_in_place(self) -> bool:
+        """Whether ``forward`` writes into the tensor it was handed: a caller that still
+        needs it afterwards must copy it first."""
+        return isinstance(self.shortcut, nn.Identity)
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # In strips: halo=2 covers the two 3x3 convs, so the result is exact.
-        return strip_apply(lambda s: self.residual(s).add_(self.shortcut(s)), x, halo=2)
+        # In strips: halo=2 covers the two 3x3 convs. Where the widths match the shortcut
+        # is the identity, so ``accumulate`` supplies the residual term by adding into
+        # ``x`` itself and the level keeps one feature map.
+        if self.updates_input_in_place:
+            return strip_apply(self.residual, x, halo=2, out=x, accumulate=True)
+        return strip_apply(
+            lambda s: self.residual(s) + self.shortcut(s),
+            x, halo=2, out_elems=image_elems(x, self.shortcut.out_channels),
+        )
 
 
 class Wan22AttentionBlock(nn.Module):
@@ -261,7 +240,7 @@ class Wan22DownBlock(nn.Module):
         h = self.avg_shortcut(x)
         for layer in self.downsamples:
             x = layer(x)
-        return x + h
+        return x.add_(h)
 
 
 class Wan22UpBlock(nn.Module):
@@ -285,11 +264,15 @@ class Wan22UpBlock(nn.Module):
         self.upsamples = nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # The DupUp reads the block's input at the end, so it takes a copy only where the
+        # first stack block updates that input in place. A copy is a quarter of the block's
+        # output; materialising the DupUp to avoid one is the whole of it.
+        shortcut = x.clone() if self.upsamples[0].updates_input_in_place else x
         h = x
         for layer in self.upsamples:
             h = layer(h)
         if self.avg_shortcut is not None:
-            h = self.avg_shortcut.add_to(x, h)
+            h = self.avg_shortcut.add_to(shortcut, h)
         return h
 
 
@@ -338,14 +321,12 @@ class Wan22Encoder(nn.Module):
         self.head = _head(dims[-1], z_dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.conv1(x)
+        x = strip_apply(self.conv1, x, halo=1, out_elems=image_elems(x, self.conv1.out_channels))
         for layer in self.downsamples:
             x = layer(x)
         for layer in self.middle:
             x = layer(x)
-        for layer in self.head:
-            x = layer(x)
-        return x
+        return strip_apply(self.head, x, halo=1)
 
 
 class Wan22Decoder(nn.Module):
@@ -379,14 +360,14 @@ class Wan22Decoder(nn.Module):
         self.head = _head(dims[-1], out_channels)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.conv1(x)
+        x = strip_apply(self.conv1, x, halo=1, out_elems=image_elems(x, self.conv1.out_channels))
         for layer in self.middle:
             x = layer(x)
         for layer in self.upsamples:
             x = layer(x)
-        for layer in self.head:
-            x = layer(x)
-        return x
+        # The conv that closes a decode asks MIOpen for more at full frame than the maps
+        # it is given cost: it was this codec's peak.
+        return strip_apply(self.head, x, halo=1)
 
 
 # ---------------------------------------------------------------------------
@@ -446,6 +427,11 @@ LATENT_STATS: dict[int, tuple[list[float], list[float]]] = {
 PIXEL_COMPRESSION = 16
 
 
+#: Not FP16: this family's activations pass its largest finite number on the way out of
+#: the last upsample, silently. FP16 convolutions are refused for it in fused._conv_weight.
+COMPUTE_DTYPE = torch.bfloat16
+
+
 class AutoencoderKLWan22(nn.Module):
     """Wan 2.2 family VAE for still images.
 
@@ -458,6 +444,8 @@ class AutoencoderKLWan22(nn.Module):
     the encode/decode boundary pads an opaque alpha onto RGB input when the VAE
     wants four channels, and decoding hands back ``image_channels`` channels.
     """
+
+    compute_dtype = COMPUTE_DTYPE
 
     def __init__(
         self,
@@ -690,8 +678,10 @@ def load_wan22_vae(
     time slice of 5D convs (causal padding puts the single frame at the end),
     squeeze 4D gammas.
     """
+    if dtype is None:
+        dtype = COMPUTE_DTYPE
     logger.info("Loading Wan 2.2 family VAE from %s", vae_path)
-    state_dict = load_safetensors(vae_path, device=device)
+    state_dict = load_safetensors(vae_path, device=device, dtype=dtype)
 
     required = (
         "encoder.conv1.weight",
