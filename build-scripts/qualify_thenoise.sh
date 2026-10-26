@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # qualify_thenoise.sh — GPU smoke test for a portable thenoise bundle.
 #
-# Runs on a real Strix Halo / Strix Point box (gfx1151). Verifies the bundle
-# imports, sees the GPU, downloads the Anima model, and runs one real
+# Runs on a real Strix Halo / Strix Point box (gfx1151) or NVIDIA GPU. Verifies
+# the bundle imports, sees the GPU, downloads the Anima model, and runs one real
 # generation end-to-end (including a first-run torch.compile). Writes a small
 # JSON report.
 #
@@ -34,8 +34,10 @@ env_setup() {
   for libdir in "$SP"/_rocm_sdk_*/lib "$SP"/torch/lib; do
     [ -d "$libdir" ] && LD_LIBRARY_PATH="${libdir}:${LD_LIBRARY_PATH:-}"
   done
-  LD_LIBRARY_PATH="$SP/_rocm_sdk_core/lib/llvm/lib:${LD_LIBRARY_PATH}"
-  export LD_LIBRARY_PATH
+  if [ -d "$SP/_rocm_sdk_core/lib/llvm/lib" ]; then
+    LD_LIBRARY_PATH="$SP/_rocm_sdk_core/lib/llvm/lib:${LD_LIBRARY_PATH:-}"
+  fi
+  export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
   # upload-artifact drops the +x bit and unversioned .so symlinks; restore them.
   chmod +x "$ROOT"/bin/* 2>/dev/null || true
   chmod +x "$SP/_rocm_sdk_core/lib/llvm/bin/"clang* 2>/dev/null || true
@@ -104,5 +106,6 @@ if [ ! -s "$OUT/qualification.png" ]; then
 fi
 echo "output PNG: $(du -h "$OUT/qualification.png" | cut -f1)"
 
-report "$PASS" "bundle qualified on gfx1151 (imports + GPU + Anima generation OK)"
+TARGET=$("$PY" -c "import torch; print('CUDA ' + str(torch.version.cuda) if torch.version.cuda and not torch.version.hip else 'gfx1151')")
+report "$PASS" "bundle qualified on $TARGET (imports + GPU + Anima generation OK)"
 echo "=== qualification PASS ==="
