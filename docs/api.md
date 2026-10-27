@@ -293,6 +293,15 @@ with urllib.request.urlopen(req) as r:
     open("fox_edited.png", "wb").write(r.read())
 ```
 
+## Caching
+
+Pipeline stages cache their output, keyed by the request fields that affect them,
+so a request repeated verbatim — same prompt, guidance, size, steps, seed and
+sampler — is served from the cache: identical bytes, a fraction of the time, no
+resampling. A request that omits `seed` (or passes `-1`) draws a fresh seed
+before the key is built and so never hits it; when timing repeated requests, vary
+the seed or prompt.
+
 ## Error semantics
 
 | Status | Meaning |
