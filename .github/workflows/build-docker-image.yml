@@ -149,7 +149,7 @@ jobs:
           images: ${{ steps.image.outputs.name }}
           tags: |
             # v0.12.1 -> 0.12.1-gfx1151
-            type=semver,pattern={{version}},suffix=-gfx${{ matrix.gfx_target }}
+            type=semver,pattern={{version}},suffix=-${{ matrix.gfx_target }}
             # the rolling per-target tag the docs point at; edge-gfx<target>
             # for anything that is not a release (see prepare)
             type=raw,value=${{ needs.prepare.outputs.tag_prefix }}${{ matrix.gfx_target }}
