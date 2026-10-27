@@ -83,16 +83,16 @@ Generate:
 
 ```bash
 ./thenoise.sh serve \
-  --dit ./models/moss-image/moss_image_sft_int8_convrot_attn.safetensors \
-  --text-encoder ./models/moss-image/qwen3.5_9b_int8_convrot.safetensors \
-  --vae ./models/moss-image/flux2-vae.safetensors
+  --dit ./models/moss-image/diffusion_models/moss_image_sft_int8_convrot_attn.safetensors \
+  --text-encoder ./models/moss-image/text_encoders/qwen3.5_9b_int8_convrot.safetensors \
+  --vae ./models/moss-image/vae/flux2-vae.safetensors
 ```
 
 ```bash
 ./thenoise.sh generate "a half-eaten croissant on a ceramic plate, window light" \
-  --dit ./models/moss-image/moss_image_sft_int8_convrot_attn.safetensors \
-  --text-encoder ./models/moss-image/qwen3.5_9b_int8_convrot.safetensors \
-  --vae ./models/moss-image/flux2-vae.safetensors
+  --dit ./models/moss-image/diffusion_models/moss_image_sft_int8_convrot_attn.safetensors \
+  --text-encoder ./models/moss-image/text_encoders/qwen3.5_9b_int8_convrot.safetensors \
+  --vae ./models/moss-image/vae/flux2-vae.safetensors
 ```
 
 ## Notes on the recipe

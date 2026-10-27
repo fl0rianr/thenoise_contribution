@@ -28,6 +28,7 @@ canonical 128-channel ones at 16 pixels per cell and one DiT token is one latent
 | Parameters | 8.2 B |
 | Download size | ~13.6 GB int8-convrot (8.4 GB DiT + 4.9 GB text encoder + 0.3 GB VAE); ~25.7 GB with the bf16 DiT |
 | VAE | Flux.2 AE, 128-ch latent at 16 px per cell |
+| Sizes | any size you ask for, rounded up to a multiple of 16 px |
 | Text encoder | Qwen3-VL 4B, read as six bundles of three tapped decoder layers |
 | Editing | ✓ |
 | KV cache | ✓ |
@@ -45,7 +46,7 @@ Same architecture and same 8.2 B weights: `dev` is the 50-step model at guidance
 the engine ships the distilled recipe and the flags are the escape hatch:
 
 ```bash
---dit ./models/fibo2/fibo2_dev_int8_convrot.safetensors --steps 50 --guidance-scale 5
+--dit ./models/fibo2/diffusion_models/fibo2_dev_int8_convrot.safetensors --steps 50 --guidance-scale 5
 ```
 
 ## Lemonade recipes
@@ -95,7 +96,9 @@ INT8-ConvRot, Edit Turbo, 768x1024:
 .venv/bin/python scripts/download.py --model fibo2 --variant dev --int8-convrot
 ```
 
-All three files land in `./models/fibo2/`. The AE is the Flux.2 one, so if you already
+All three files land under `./models/fibo2/`, each in the subdirectory the
+Hugging Face repo keeps it in: `diffusion_models/`, `text_encoders/` and `vae/`.
+The AE is the Flux.2 one, so if you already
 have it from another model, point `--vae` at that file instead of downloading a second
 copy.
 
@@ -105,9 +108,9 @@ Generate:
 
 ```bash
 ./thenoise.sh generate \
-  --dit ./models/fibo2/fibo2_edit_turbo_int8_convrot.safetensors \
-  --vae ./models/fibo2/flux2-vae.safetensors \
-  --text-encoder ./models/fibo2/qwen3vl_4b_int8_convrot.safetensors \
+  --dit ./models/fibo2/diffusion_models/fibo2_edit_turbo_int8_convrot.safetensors \
+  --vae ./models/fibo2/vae/flux2-vae.safetensors \
+  --text-encoder ./models/fibo2/text_encoders/qwen3vl_4b_int8_convrot.safetensors \
   --prompt "a half-eaten croissant on a ceramic plate, window light" \
   --out croissant.png
 ```
@@ -117,9 +120,9 @@ plane, modulated at `t = 0` while the target is denoised:
 
 ```bash
 ./thenoise.sh edit \
-  --dit ./models/fibo2/fibo2_edit_turbo_int8_convrot.safetensors \
-  --vae ./models/fibo2/flux2-vae.safetensors \
-  --text-encoder ./models/fibo2/qwen3vl_4b_int8_convrot.safetensors \
+  --dit ./models/fibo2/diffusion_models/fibo2_edit_turbo_int8_convrot.safetensors \
+  --vae ./models/fibo2/vae/flux2-vae.safetensors \
+  --text-encoder ./models/fibo2/text_encoders/qwen3vl_4b_int8_convrot.safetensors \
   --image croissant.png \
   --prompt "make it night, keep everything else exactly as it is" \
   --out croissant_night.png
@@ -131,9 +134,9 @@ result:
 
 ```bash
 ./thenoise.sh edit \
-  --dit ./models/fibo2/fibo2_edit_turbo_int8_convrot.safetensors \
-  --vae ./models/fibo2/flux2-vae.safetensors \
-  --text-encoder ./models/fibo2/qwen3vl_4b_int8_convrot.safetensors \
+  --dit ./models/fibo2/diffusion_models/fibo2_edit_turbo_int8_convrot.safetensors \
+  --vae ./models/fibo2/vae/flux2-vae.safetensors \
+  --text-encoder ./models/fibo2/text_encoders/qwen3vl_4b_int8_convrot.safetensors \
   --image poster.png \
   --prompt '{"edit_instruction": "add a headline across the top", "text_render": [{"text": "ROME, 2026"}]}' \
   --out poster2.png
@@ -144,8 +147,8 @@ because this model supports editing:
 
 ```bash
 ./thenoise.sh serve \
-  --dit ./models/fibo2/fibo2_edit_turbo_int8_convrot.safetensors \
-  --vae ./models/fibo2/flux2-vae.safetensors \
-  --text-encoder ./models/fibo2/qwen3vl_4b_int8_convrot.safetensors \
+  --dit ./models/fibo2/diffusion_models/fibo2_edit_turbo_int8_convrot.safetensors \
+  --vae ./models/fibo2/vae/flux2-vae.safetensors \
+  --text-encoder ./models/fibo2/text_encoders/qwen3vl_4b_int8_convrot.safetensors \
   --host 127.0.0.1 --port 8000
 ```
