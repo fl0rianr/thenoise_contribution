@@ -25,19 +25,15 @@ concurrency:
 
 jobs:
   pytest:
-    name: pytest (${{ matrix.python-version }})
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ['3.10', '3.13']
     steps:
       - name: Checkout TheNoise
         uses: actions/checkout@v4
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v10
+        # A full version, not @v10: setup-uv stopped publishing floating major tags.
+        uses: astral-sh/setup-uv@v10.3.3
 
       - name: Install a CPU torch, then thenoise
         # torch is not in pyproject.toml (the bundles install their own device build) and
@@ -45,7 +41,7 @@ jobs:
         # transformers' own torch dependency re-resolves the CUDA one from PyPI.
         run: |
           set -euo pipefail
-          uv venv --python '${{ matrix.python-version }}' .venv
+          uv venv --python 3.14 .venv
           uv pip install --python .venv/bin/python \
             --index-url https://download.pytorch.org/whl/cpu torch
           uv pip install --python .venv/bin/python -e '.[dev]'
